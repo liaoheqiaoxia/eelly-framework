@@ -11,21 +11,20 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Eelly\Network;
+namespace Shadon\Network;
 
-use Eelly\Events\Listener\HttpServerListener;
-use Eelly\Exception\RequestException;
-use Phalcon\DiInterface;
+use Shadon\Events\Listener\HttpServerListener;
+use Shadon\Network\Traits\ServerTrait;
 use Swoole\Http\Server as SwooleHttpServer;
 use Swoole\Lock;
-use Swoole\Table;
-use Symfony\Component\Console\Output\OutputInterface;
 
 /**
  * Class Server.
  */
 class HttpServer extends SwooleHttpServer
 {
+    use ServerTrait;
+
     /**
      * event list.
      *
@@ -55,27 +54,16 @@ class HttpServer extends SwooleHttpServer
     private const MAX_MODULE_MAP_COUNT = 50;
 
     /**
-     * @var OutputInterface
+     * @var HttpServerListener
      */
-    private $output;
-
     private $listner;
 
     /**
-     * @var DiInterface
+     * HttpServer constructor.
+     *
+     * @param string $host
+     * @param int    $port
      */
-    private $di;
-
-    /**
-     * @var Lock
-     */
-    private $lock;
-
-    /**
-     * @var Table
-     */
-    private $moduleMap;
-
     public function __construct(string $host, int $port)
     {
         parent::__construct($host, $port);
@@ -87,13 +75,16 @@ class HttpServer extends SwooleHttpServer
         }
     }
 
+    /**
+     * register router.
+     */
     public function registerRouter(): void
     {
         /* @var \Phalcon\Mvc\Router $router */
         $router = $this->di->getShared('router');
         // system
         $router->addPost('/_/:controller/:action', [
-            'namespace'  => 'Eelly\\Controller',
+            'namespace'  => 'Shadon\\Controller',
             'controller' => 1,
             'action'     => 2,
         ]);
@@ -105,7 +96,7 @@ class HttpServer extends SwooleHttpServer
         }
         // service api
         foreach ($this->di->getShared('config')->moduleList as $moduleName) {
-            $namespace = ucfirst($moduleName);
+            $namespace = ucfirst($moduleName).'\\Logic';
             $router->addPost('/'.$moduleName.'/:controller/:action', [
                 'namespace'  => $namespace,
                 'module'     => $moduleName,
@@ -115,134 +106,15 @@ class HttpServer extends SwooleHttpServer
         }
     }
 
+    /**
+     * Set process name.
+     *
+     * @param string $name
+     */
     public function setProcessName(string $name): void
     {
         $processName = 'httpserver_'.$name;
         swoole_set_process_name($processName);
         $this->writeln($processName);
-    }
-
-    /**
-     * @param string $string
-     * @param int    $options
-     */
-    public function writeln(string $string, $options = 0)
-    {
-        $info = sprintf('[%s %d] %s', formatTime(), getmypid(), $string);
-        $this->lock->lock();
-        $this->output->writeln($info, $options);
-        $this->lock->unlock();
-    }
-
-    /**
-     * register module.
-     *
-     * @param string $module
-     * @param string $ip
-     * @param int    $port
-     */
-    public function registerModule(string $module, string $ip, int $port): void
-    {
-        $record = $this->moduleMap->get($module);
-        $created = false == $record ? time() : $record['created'];
-        $this->moduleMap->set($module, ['ip' => $ip, 'port' => $port, 'created' => $created, 'updated' => time()]);
-        $this->writeln(sprintf('register module(%s) %s:%d', $module, $ip, $port), OutputInterface::VERBOSITY_DEBUG);
-    }
-
-    /**
-     * @return array
-     */
-    public function getModuleMap()
-    {
-        $moduleMap = [];
-        foreach ($this->moduleMap as $module => $value) {
-            $moduleMap[$module] = $value;
-        }
-
-        return $moduleMap;
-    }
-
-    /**
-     * @param string $moduleName
-     *
-     * @return \swoole_client
-     */
-    public function getModuleClient(string $moduleName)
-    {
-        $module = $this->moduleMap->get($moduleName);
-        if (false === $module) {
-            throw new RequestException(404, 'Module not found', $this->di->getShared('request'), $this->di->getShared('response'));
-        }
-        static $mdduleClientMap = [];
-        if (isset($mdduleClientMap[$moduleName])) {
-            if ($mdduleClientMap[$moduleName]['ip'] == $module['ip']
-                && $mdduleClientMap[$moduleName]['port'] == $module['port']) {
-                if (!$mdduleClientMap[$moduleName]['client']->isConnected()) {
-                    $mdduleClientMap[$moduleName]['client']->connect($module['ip'], $module['port']);
-                }
-
-                return $mdduleClientMap[$moduleName]['client'];
-            } else {
-                // 强制关闭
-                $mdduleClientMap[$module]['client']->close(true);
-                unset($mdduleClientMap[$module]);
-            }
-        }
-        $client = new \swoole_client(SWOOLE_TCP | SWOOLE_KEEP);
-        $client->connect($module['ip'], $module['port']);
-        $mdduleClientMap[$moduleName] = [
-            'ip'     => $module['ip'],
-            'port'   => $module['port'],
-            'client' => $client,
-        ];
-
-        return $client;
-    }
-
-    /**
-     * @return OutputInterface
-     */
-    public function getOutput(): OutputInterface
-    {
-        return $this->output;
-    }
-
-    /**
-     * @param OutputInterface $output
-     */
-    public function setOutput(OutputInterface $output): void
-    {
-        $this->output = $output;
-    }
-
-    /**
-     * @return DiInterface
-     */
-    public function getDi(): DiInterface
-    {
-        return $this->di;
-    }
-
-    /**
-     * @param DiInterface $di
-     */
-    public function setDi(DiInterface $di): void
-    {
-        $this->di = $di;
-    }
-
-    /**
-     * @return Table
-     */
-    private function createModuleMap()
-    {
-        $moduleMap = new Table(self::MAX_MODULE_MAP_COUNT);
-        $moduleMap->column('ip', Table::TYPE_STRING, 15);
-        $moduleMap->column('port', Table::TYPE_INT);
-        $moduleMap->column('created', Table::TYPE_INT);
-        $moduleMap->column('updated', Table::TYPE_INT);
-        $moduleMap->create();
-
-        return $moduleMap;
     }
 }

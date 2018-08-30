@@ -11,10 +11,10 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Eelly\Session;
+namespace Shadon\Session;
 
-use Phalcon\Session\Factory as SessionFactory;
 use Phalcon\Session\AdapterInterface;
+use Phalcon\Session\Factory as SessionFactory;
 
 class Factory extends SessionFactory
 {
@@ -23,6 +23,12 @@ class Factory extends SessionFactory
      */
     public static function load($config): AdapterInterface
     {
-        return self::loadClass("Eelly\\Session\\Adapter", $config);
+        if (class_exists('Shadon\\Session\\Adapter\\'.$config['adapter'])) {
+            $adapter = self::loadClass('Shadon\\Session\\Adapter', $config);
+        } else {
+            $adapter = parent::load($config);
+        }
+
+        return $adapter;
     }
 }

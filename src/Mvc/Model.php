@@ -11,10 +11,11 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Eelly\Mvc;
+namespace Shadon\Mvc;
 
 use Phalcon\Di;
 use Phalcon\Mvc\Model as MvcModel;
+use Phalcon\Mvc\Model\ResultsetInterface;
 use Phalcon\Paginator\Adapter\Model as PaginatorModel;
 use Phalcon\Paginator\Factory;
 
@@ -33,12 +34,53 @@ abstract class Model extends MvcModel
     }
 
     /**
+     * @param null $parameters
+     *
+     * @return ResultsetInterface
+     */
+    public static function find($parameters = null): ResultsetInterface
+    {
+        try {
+            return parent::find($parameters);
+        } catch (\PDOException $e) {
+            if ('42S22' == $e->getCode()) {
+                $di = Di::getDefault();
+                $modelsMetadata = $di->getShared('modelsMetadata');
+                $modelsMetadata->reset();
+
+                return parent::find($parameters);
+            } else {
+                throw $e;
+            }
+        }
+    }
+
+    /**
+     * save with transaction.
+     *
+     * @param null $data
+     * @param null $whiteList
+     */
+    public function saveWithTransaction(\Phalcon\Mvc\Model\TransactionInterface $transaction, $data = null, $whiteList = null)
+    {
+        $this->setTransaction($transaction);
+        $success = $this->save($data, $whiteList);
+        if (false == $success) {
+            foreach ($this->getMessages() as $message) {
+                $transaction->rollback($message->getMessage());
+            }
+        }
+
+        return $success;
+    }
+
+    /**
      * create builder.
      *
      * @param mixed  $models
      * @param string $alias  设置别名，用于连表别名
      *
-     * @return \Eelly\Mvc\Model\Query\Builder
+     * @return \Shadon\Mvc\Model\Query\Builder
      */
     public static function createBuilder($models = null, $alias = null)
     {
@@ -276,8 +318,43 @@ abstract class Model extends MvcModel
 
         $setSql = rtrim($setSql, ',');
         $whereSql = rtrim($whereSql, ' AND ');
-        $sql = 'UPDATE '.$tableName.' SET '.$setSql.' WHERE '.$whereSql;
+        $sql = 'UPDATE `'.$tableName.'` SET '.$setSql.' WHERE '.$whereSql;
         $this->getDI()->get('dbMaster')->execute($sql);
+
+        return (int) $this->getWriteConnection()->affectedRows();
+    }
+
+    /*
+    **
+    * 批量更新，通过主键ID.
+    * code
+    *  $ids = [1,3,4];
+    * code.
+    *
+    * @param array $ids 一维数组的主键ID
+    *
+    * @return int
+    *
+    * @author 肖俊明<xiaojunming@eelly.net>
+    *
+    * @since 2017年10月30日
+    */
+    public function batchUpdate(array $ids, array $set)
+    {
+        $ids = array_map('intval', $ids);
+        if (empty($ids)) {
+            return 0;
+        }
+        $setSql = '';
+        //拼接条件
+        foreach ($set as $sk => $sv) {
+            $setSql .= $sk.' = "'.$sv.'",';
+        }
+        $idStr = implode(',', $ids);
+        $tableName = $this->getSource();
+        $setSql = rtrim($setSql, ',');
+        $sql = 'UPDATE `'.$tableName.'` SET '.$setSql.' WHERE '.$this->pk.' IN ('.$idStr.')';
+        $this->getWriteConnection()->execute($sql);
 
         return (int) $this->getWriteConnection()->affectedRows();
     }
@@ -304,7 +381,7 @@ abstract class Model extends MvcModel
         }
         $idStr = implode(',', $ids);
         $tableName = $this->getSource();
-        $sql = 'DELETE FROM '.$tableName.' WHERE '.$this->pk.' IN ('.$idStr.')';
+        $sql = 'DELETE FROM `'.$tableName.'` WHERE '.$this->pk.' IN ('.$idStr.')';
         $this->getWriteConnection()->execute($sql);
 
         return (int) $this->getWriteConnection()->affectedRows();

@@ -11,7 +11,7 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Eelly\Mvc;
+namespace Shadon\Mvc;
 
 use Phalcon\Mvc\View as MvcView;
 
@@ -25,9 +25,8 @@ class View extends MvcView
         $this->setViewsDir('var/views');
         $this->registerEngines(
             [
-                //'.phtml'   => 'Phalcon\Mvc\View\Engine\Php',
-                '.mustache' => 'Eelly\Mvc\View\Engine\Mustache',
-                '.hbs'      => 'Eelly\Mvc\View\Engine\Handlebars',
+                '.phtml'    => 'Phalcon\Mvc\View\Engine\Php',
+                '.hbs'      => 'Shadon\Mvc\View\Engine\Handlebars',
             ]
         );
     }

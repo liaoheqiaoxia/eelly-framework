@@ -11,11 +11,11 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Eelly\Process;
+namespace Shadon\Process;
 
-use Eelly\Network\TcpServer as Server;
 use GuzzleHttp\Client as HttpClient;
 use GuzzleHttp\Exception\ConnectException;
+use Shadon\Network\TcpServer as Server;
 use Symfony\Component\Console\Output\OutputInterface;
 
 /**
@@ -54,7 +54,7 @@ class TcpServerHealth extends Process
         });
     }
 
-    public function registerModule()
+    public function registerModule(): void
     {
         $di = $this->server->getDi();
         $port = $di->getShared('config')->httpServer->port;
@@ -64,9 +64,8 @@ class TcpServerHealth extends Process
                 '0.0.0.0:'.$port.'/_/tcpServer/register',
                 [
                     'form_params' => [
-                        'module'  => $this->server->getModule(),
+                        'module'  => $this->server->getModuleName(),
                         'port'    => $this->server->port,
-                        'pid'     => $this->server->master_pid,
                         'updated' => time(),
                     ],
                 ]
@@ -75,10 +74,13 @@ class TcpServerHealth extends Process
                 $this->server->writeln(
                     sprintf(
                         'register module(%s) to 0.0.0.0:%d %s',
-                        $this->server->getModule(), $port, (string) $response->getBody()
+                        $this->server->getModuleName(), $port, $body = (string) $response->getBody()
                     ),
                     OutputInterface::VERBOSITY_DEBUG
                 );
+                foreach (\GuzzleHttp\json_decode($body, true) as $module => $value) {
+                    $this->server->registerModule($module, $value['ip'], $value['port']);
+                }
             }
         } catch (ConnectException $e) {
             $this->server->writeln($e->getMessage());

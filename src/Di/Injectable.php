@@ -11,11 +11,12 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Eelly\Di;
+namespace Shadon\Di;
 
-use Eelly\Db\Adapter\Pdo\Mysql as Connection;
-use Eelly\Queue\Adapter\AMQPFactory;
+use Phalcon\Db\Profiler;
 use Phalcon\Di\Injectable as DiInjectable;
+use Shadon\Db\Adapter\Pdo\Mysql as Connection;
+use Shadon\Queue\Adapter\AMQPFactory;
 
 /**
  * @author hehui<hehui@eelly.net>
@@ -28,6 +29,9 @@ abstract class Injectable extends DiInjectable implements InjectionAwareInterfac
     public function registerDbService(): void
     {
         $di = $this->getDI();
+        $di->setShared('dbProfiler', function () {
+            return new Profiler();
+        });
         // mysql master connection service
         $di->setShared('dbMaster', function () {
             $config = $this->getModuleConfig()->mysql->master;
@@ -44,7 +48,20 @@ abstract class Injectable extends DiInjectable implements InjectionAwareInterfac
             shuffle($config);
 
             $connection = new Connection(current($config));
-            $connection->setEventsManager($this->get('eventsManager'));
+            $eventsManager = $this->get('eventsManager');
+            $connection->setEventsManager($eventsManager);
+
+            $profiler = $this->get('dbProfiler');
+            $eventsManager->attach('db', function ($event, $connection) use ($profiler): void {
+                if ('beforeQuery' === $event->getType()) {
+                    $profiler->startProfile(
+                        $connection->getSQLStatement()
+                    );
+                }
+                if ('afterQuery' === $event->getType()) {
+                    $profiler->stopProfile();
+                }
+            });
 
             return $connection;
         });
@@ -57,15 +74,6 @@ abstract class Injectable extends DiInjectable implements InjectionAwareInterfac
                 $config['options'][$config['adapter']],
             ]);
         });
-
-        // add trace id
-        if (class_exists('Eelly\SDK\EellyClient')) {
-            $this->eventsManager->attach('db:afterConnect', function (Connection $connection): void {
-                $connection->execute('SELECT trace_?', [
-                    \Eelly\SDK\EellyClient::$traceId,
-                ]);
-            });
-        }
     }
 
     /**

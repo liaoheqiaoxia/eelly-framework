@@ -11,7 +11,7 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Eelly\Queue\Adapter;
+namespace Shadon\Queue\Adapter;
 
 class Producer extends \Thumper\Producer
 {
@@ -26,5 +26,13 @@ class Producer extends \Thumper\Producer
             $options['name'] = self::PREFIX.$options['name'];
         }
         parent::setExchangeOptions($options);
+    }
+
+    /**
+     * @return \PhpAmqpLib\Connection\AbstractConnection
+     */
+    public function getConnection()
+    {
+        return $this->channel->getConnection();
     }
 }

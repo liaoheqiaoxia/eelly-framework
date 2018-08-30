@@ -11,14 +11,13 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Eelly\Dispatcher;
+namespace Shadon\Dispatcher;
 
-use Eelly\DTO\UidDTO;
-use Eelly\Exception\InvalidArgumentException;
-use Eelly\Exception\RequestException;
+use InvalidArgumentException;
 use Phalcon\Events\Event;
 use Phalcon\Mvc\Dispatcher;
 use Phalcon\Mvc\Dispatcher\Exception as DispatchException;
+use Shadon\Exception\RequestException;
 
 /**
  * @author hehui<hehui@eelly.net>
@@ -26,10 +25,8 @@ use Phalcon\Mvc\Dispatcher\Exception as DispatchException;
 class ServiceDispatcher extends Dispatcher
 {
     /**
-     * @var UidDTO
+     * ServiceDispatcher constructor.
      */
-    public static $uidDTO;
-
     public function __construct()
     {
         $this->setControllerSuffix('Logic');
@@ -63,11 +60,11 @@ class ServiceDispatcher extends Dispatcher
                 case Dispatcher::EXCEPTION_ACTION_NOT_FOUND:
                     $notFoundFuntion();
 
-                    return true;
+                    return false;
             }
-
-            return true;
         }
+
+        return true;
     }
 
     /**
@@ -78,7 +75,7 @@ class ServiceDispatcher extends Dispatcher
         $class = $this->getControllerClass();
         $method = $this->getActionName();
         /**
-         * @var \Eelly\Http\ServiceRequest $request
+         * @var \Shadon\Http\ServiceRequest $request
          */
         $request = $this->getDI()->getShared('request');
         if (!class_exists($class) || !method_exists($class, $method)) {
@@ -142,8 +139,10 @@ class ServiceDispatcher extends Dispatcher
                     unset($routeParams[$paramName]);
                 } elseif ($parameter->isDefaultValueAvailable()) {
                     // 存在默认值参数
-                    if (UidDTO::class == $expectedType) {
-                        $routeParams[$position] = self::$uidDTO = new UidDTO();
+                    $routeParamsObject = new \ArrayObject($routeParams);
+                    $status = $this->getEventsManager()->fire('dispatcher:setDefaultParamValue', $routeParamsObject, $parameter);
+                    if (false === $status) {
+                        $routeParams = $routeParamsObject->getArrayCopy();
                     } else {
                         $routeParams[$position] = $parameter->getDefaultValue();
                     }
@@ -152,6 +151,7 @@ class ServiceDispatcher extends Dispatcher
                     $functionOfThrowInvalidArgumentException($position, $expectedType, 'null');
                 }
             }
+
             // 校验参数
             if (array_key_exists($position, $routeParams)) {
                 if (!$checkedParameter) {
@@ -164,7 +164,7 @@ class ServiceDispatcher extends Dispatcher
                         } else {
                             settype($routeParams[$position], $expectedType);
                         }
-                    } elseif (!is_a($routeParams[$position], $expectedType)) {
+                    } elseif (!empty($expectedType) && !is_a($routeParams[$position], $expectedType)) {
                         $functionOfThrowInvalidArgumentException($position, $expectedType, gettype($routeParams[$position]));
                     }
                 }

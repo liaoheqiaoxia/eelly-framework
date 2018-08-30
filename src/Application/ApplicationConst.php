@@ -11,40 +11,42 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Eelly\Application;
+namespace Shadon\Application;
 
 /**
+ * Application const variable and static variable.
+ *
  * @author hehui<hehui@eelly.net>
  */
 final class ApplicationConst
 {
     /**
-     * prod 线上.
+     * prod 生产环境.
      *
      * @var string
      */
     public const ENV_PRODUCTION = 'prod';
 
     /**
-     * local 待上线
+     * staging 预发布环境.
      *
      * @var string
      */
-    public const ENV_STAGING = 'local';
+    public const ENV_STAGING = 'staging';
 
     /**
-     * test 测试.
+     * test 测试环境.
      *
      * @var string
      */
     public const ENV_TEST = 'test';
 
     /**
-     * dev本地.
+     * develop 本地开发环境.
      *
      * @var string
      */
-    public const ENV_DEVELOPMENT = 'dev';
+    public const ENV_DEVELOPMENT = 'develop';
 
     /**
      * app name.
@@ -58,14 +60,42 @@ final class ApplicationConst
      *
      * @var string
      */
-    public const APP_VERSION = '1.0';
+    public const APP_VERSION = '0.2.4';
 
     /**
-     * app env.
+     * fpm runtime environment.
      *
-     * @var string
+     * @var int
      */
-    public static $env = self::ENV_PRODUCTION;
+    public const RUNTIME_ENV_FPM = 1;
+
+    /**
+     * cli runtime environment.
+     *
+     * @var int
+     */
+    public const RUNTIME_ENV_CLI = 2;
+
+    /**
+     * swoole runtime environment.
+     *
+     * @var int
+     */
+    public const RUNTIME_ENV_SWOOLE = 4;
+
+    /**
+     * service runtime environment.
+     *
+     * @var int
+     */
+    public const RUNTIME_ENV_SERVICE = 8;
+
+    /**
+     * app runtime environment.
+     *
+     * @var int
+     */
+    public static $runtimeEnv = 0;
 
     /**
      * app name.
@@ -80,4 +110,26 @@ final class ApplicationConst
      * @var array
      */
     public static $oauth;
+
+    /**
+     * Append runtime environment.
+     *
+     * @param int $runtimeEnv
+     */
+    public static function appendRuntimeEnv(int $runtimeEnv): void
+    {
+        self::$runtimeEnv |= $runtimeEnv;
+    }
+
+    /**
+     * Has runtime environment.
+     *
+     * @param int $runtimeEnv
+     *
+     * @return bool
+     */
+    public static function hasRuntimeEnv(int $runtimeEnv): bool
+    {
+        return $runtimeEnv == (self::$runtimeEnv & $runtimeEnv);
+    }
 }

@@ -11,20 +11,19 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Eelly\Application;
+namespace Shadon\Application;
 
 use Composer\Autoload\ClassLoader;
-use Eelly\Di\WebDi;
-use Eelly\Loader\Loader;
-use Eelly\Mvc\Application;
-use Eelly\SDK\EellyClient;
 use Phalcon\Config;
-use Eelly\Session\Factory;
+use Shadon\Di\WebDi;
+use Shadon\Error\Handler as ErrorHandler;
+use Shadon\Mvc\Application;
+use Shadon\Session\Factory;
 
 /**
  * Class WebApplication.
  *
- * @property \Eelly\Mvc\Application $application
+ * @property \Shadon\Mvc\Application $application
  */
 class WebApplication
 {
@@ -69,13 +68,16 @@ class WebApplication
             'timezone' => $arrayConfig['timezone'],
             'appname'  => $arrayConfig['appName'],
         ]);
+        ApplicationConst::appendRuntimeEnv(ApplicationConst::RUNTIME_ENV_FPM);
         $this->di->setShared('config', new Config($arrayConfig));
         date_default_timezone_set(APP['timezone']);
         $this->application = $this->di->getShared(Application::class);
         $this->di->setShared('application', $this->application);
-        $this->di->setShared('session', function() use($arrayConfig) {
+        $this->di->setShared('session', function () use ($arrayConfig) {
             $options = $arrayConfig['session'] ?? [];
-            throwIf(empty($options), \RuntimeException::class, 'session config cannot be empty');
+            if (empty($options)) {
+                throw new \RuntimeException('session config cannot be empty');
+            }
 
             $session = Factory::load($options);
             $session->start();
@@ -91,6 +93,9 @@ class WebApplication
      */
     public function handle($uri = null)
     {
+        /* @var ErrorHandler $errorHandler */
+        $errorHandler = $this->di->getShared(ErrorHandler::class);
+        $errorHandler->register();
         $this->initAutoload()
             ->initEventsManager()
             ->registerServices();
@@ -111,14 +116,6 @@ class WebApplication
     private function initEventsManager()
     {
         $eventsManager = $this->di->getShared('eventsManager');
-        $eventsManager->attach('di:afterServiceResolve', function (\Phalcon\Events\Event $event, \Phalcon\Di $di, array $service): void {
-            if ($service['instance'] instanceof \Phalcon\Events\EventsAwareInterface) {
-                $service['instance']->setEventsManager($di->getEventsManager());
-            }
-            if (method_exists($service['instance'], 'afterServiceResolve')) {
-                $service['instance']->afterServiceResolve();
-            }
-        });
         $this->application->setEventsManager($eventsManager);
         $this->di->setInternalEventsManager($eventsManager);
 
@@ -144,23 +141,6 @@ class WebApplication
     private function registerServices()
     {
         $this->di->setShared('router', $this->di->getShared('config')->routes);
-        // eelly client service
-        $this->di->setShared('eellyClient', function () {
-            $options = $this->getConfig()->oauth2Client->eelly->toArray();
-            if (ApplicationConst::ENV_PRODUCTION === APP['env']) {
-                $eellyClient = EellyClient::init($options['options']);
-            } else {
-                $collaborators = [
-                    'httpClient' => new \GuzzleHttp\Client(['verify' => false]),
-                ];
-                $eellyClient = EellyClient::init($options['options'], $collaborators, $options['providerUri']);
-            }
-            if ($this->has('cache')) {
-                $eellyClient->getProvider()->setAccessTokenCache($this->getCache());
-            }
-
-            return $eellyClient;
-        });
 
         return $this;
     }

@@ -11,7 +11,7 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Eelly\Cache\Backend;
+namespace Shadon\Cache\Backend;
 
 use Phalcon\Cache\Backend\Redis;
 use Phalcon\Cache\FrontendInterface;
@@ -50,5 +50,18 @@ class Predis extends Redis
         } else {
             $this->_redis = $redisClients[$clientKey] = new PredisResource($options['parameters'], $options['options']);
         }
+    }
+
+    /**
+     * (non-PHPdoc).
+     *
+     * @see \Phalcon\Cache\Backend\Redis::save()
+     */
+    public function save($keyName = null, $content = null, $lifetime = null, $stopBuffer = true)
+    {
+        /* @var \Predis\Response\Status $status */
+        $status = parent::save($keyName, $content, $lifetime, $stopBuffer);
+
+        return 'OK' == (string) $status;
     }
 }

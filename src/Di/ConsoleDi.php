@@ -11,18 +11,19 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Eelly\Di;
+namespace Shadon\Di;
 
-use Eelly\Dispatcher\EventDispatcher;
-use Eelly\Dispatcher\ServiceDispatcher;
-use Eelly\Http\PhalconServiceResponse;
-use Eelly\Http\SwoolePhalconRequest;
-use Eelly\Logger\ServiceLogger;
-use Eelly\Mvc\Collection\Manager as CollectionManager;
-use Eelly\Mvc\Model\Manager as ModelsManager;
-use Eelly\Mvc\Model\Transaction\Manager as TransactionManager;
-use Eelly\Router\ServiceRouter;
+use Monolog\Handler\StreamHandler;
+use Monolog\Logger;
 use Phalcon\Di\Service;
+use Shadon\Dispatcher\EventDispatcher;
+use Shadon\Dispatcher\ServiceDispatcher;
+use Shadon\Http\PhalconServiceResponse;
+use Shadon\Http\SwoolePhalconRequest;
+use Shadon\Mvc\Collection\Manager as CollectionManager;
+use Shadon\Mvc\Model\Manager as ModelsManager;
+use Shadon\Mvc\Model\Transaction\Manager as TransactionManager;
+use Shadon\Router\ServiceRouter;
 
 /**
  * @author hehui<hehui@eelly.net>
@@ -34,8 +35,21 @@ class ConsoleDi extends FactoryDefault
         parent::__construct();
         $this->_services['collectionManager'] = new Service('collectionManager', CollectionManager::class, true);
         $this->_services['dispatcher'] = new Service('dispatcher', ServiceDispatcher::class, true);
+        $this->_services['errorViewHandler'] = new Service('errorViewHandler', function () {
+            return new StreamHandler('php://stderr');
+        }, true);
         $this->_services['eventDispatcher'] = new Service('eventDispatcher', EventDispatcher::class, true);
-        $this->_services['logger'] = new Service('logger', ServiceLogger::class, true);
+        $this->_services['logger'] = new Service('logger', function () {
+            $channel = APP['appname'].'.'.APP['env'];
+            $moduleName = $this->getShared('dispatcher')->getModuleName();
+            $channel .= '.'.($moduleName ? $moduleName : 'api');
+            $logger = new Logger($channel);
+            $config = $this->getShared('config');
+            $stream = realpath($config['logPath']).'/app.'.date('Ymd').'.txt';
+            $logger->pushHandler(new StreamHandler($stream));
+
+            return $logger;
+        });
         $this->_services['modelsManager'] = new Service('modelsManager', ModelsManager::class, true);
         $this->_services['request'] = new Service('request', SwoolePhalconRequest::class, true);
         $this->_services['response'] = new Service('response', PhalconServiceResponse::class, true);

@@ -11,31 +11,20 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Eelly\Session\Adapter;
+namespace Shadon\Session\Adapter;
 
-use Eelly\Cache\Backend\Predis as CachePredis;
 use Phalcon\Session\Adapter;
+use Shadon\Cache\Backend\Predis as CachePredis;
 
 class Predis extends Adapter
 {
-    protected $_redis = null;
+    protected $_redis;
 
     protected $_lifetime = 1440;
 
-    public function getRedis()
-    {
-        return $this->_redis;
-    }
-
-    public function getLifetime()
-    {
-        return $this->_lifetime;
-    }
-
     public function __construct(array $options = [])
     {
-        $lifetime;
-        if ($lifetime = $options["lifetime"] ?? '') {
+        if ($lifetime = $options['lifetime'] ?? '') {
             $this->_lifetime = $lifetime;
         }
 
@@ -45,19 +34,29 @@ class Predis extends Adapter
         ];
         isset($options['cluster']) && $cacheOptions['options']['cluster'] = $options['cluster'];
         $this->_redis = new CachePredis(new \Phalcon\Cache\Frontend\Igbinary([
-            "lifetime" => $this->_lifetime
+            'lifetime' => $this->_lifetime,
         ]), $cacheOptions);
 
         session_set_save_handler(
-            [$this, "open"],
-            [$this, "close"],
-            [$this, "read"],
-            [$this, "write"],
-            [$this, "destroy"],
-            [$this, "gc"]
+            [$this, 'open'],
+            [$this, 'close'],
+            [$this, 'read'],
+            [$this, 'write'],
+            [$this, 'destroy'],
+            [$this, 'gc']
             );
 
         parent::__construct($options);
+    }
+
+    public function getRedis()
+    {
+        return $this->_redis;
+    }
+
+    public function getLifetime()
+    {
+        return $this->_lifetime;
     }
 
     /**
@@ -99,9 +98,7 @@ class Predis extends Adapter
      */
     public function destroy($sessionId = null): bool
     {
-        $id;
-
-        if ($sessionId === null) {
+        if (null === $sessionId) {
             $id = $this->getId();
         } else {
             $id = $sessionId;

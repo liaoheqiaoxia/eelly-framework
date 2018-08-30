@@ -11,11 +11,14 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Eelly\Http;
+namespace Shadon\Http;
 
-use Eelly\Application\ApplicationConst;
 use Phalcon\Http\Response as HttpResponse;
+use Shadon\Application\ApplicationConst;
 
+/**
+ * Class PhalconServiceResponse.
+ */
 class PhalconServiceResponse extends HttpResponse
 {
     public function __construct($content = null, $code = null, $status = null)
@@ -23,12 +26,13 @@ class PhalconServiceResponse extends HttpResponse
         parent::__construct($content, $code, $status);
         $this->setHeader('Access-Control-Allow-Origin', '*');
         $this->setHeader('Server', ApplicationConst::APP_NAME.'/'.ApplicationConst::APP_VERSION);
+        $this->setStatusCode(200);
     }
 
     /**
      * {@inheritdoc}
      */
-    public function setJsonContent($content, int $jsonOptions = 0, int $depth = 512): HttpResponse
+    public function setJsonContent($content, $jsonOptions = 0, $depth = 512): HttpResponse
     {
         $this->setContentType('application/json', 'UTF-8');
         $json = \json_encode($content, $jsonOptions, $depth);

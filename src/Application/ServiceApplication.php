@@ -11,23 +11,22 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Eelly\Application;
+namespace Shadon\Application;
 
 use Composer\Autoload\ClassLoader;
-use Eelly\Di\ServiceDi;
-use Eelly\Error\Handler as ErrorHandler;
-use Eelly\Exception\LogicException;
-use Eelly\Exception\RequestException;
-use Eelly\Mvc\Application;
-use ErrorException;
 use League\OAuth2\Server\Exception\OAuthServerException;
+use LogicException;
 use Phalcon\Config;
 use Phalcon\Dispatcher;
 use Phalcon\Events\Event;
 use Phalcon\Mvc\Router;
+use Shadon\Di\ServiceDi;
+use Shadon\Error\Handler as ErrorHandler;
+use Shadon\Exception\RequestException;
+use Shadon\Mvc\Application;
 
 /**
- * @property \Eelly\Mvc\Application $application
+ * @property \Shadon\Mvc\Application $application
  *
  * @author hehui<hehui@eelly.net>
  */
@@ -72,7 +71,9 @@ class ServiceApplication
             'env'      => $appEnv,
             'key'      => $appKey,
             'timezone' => $arrayConfig['timezone'],
+            'appname'  => $arrayConfig['appName'],
         ]);
+        ApplicationConst::appendRuntimeEnv(ApplicationConst::RUNTIME_ENV_FPM | ApplicationConst::RUNTIME_ENV_SERVICE);
         $this->di->setShared('config', new Config($arrayConfig));
         date_default_timezone_set(APP['timezone']);
         $this->application = $this->di->getShared(Application::class);
@@ -86,6 +87,7 @@ class ServiceApplication
      */
     public function handle($uri = null)
     {
+        /* @var ErrorHandler $errorHandler */
         $errorHandler = $this->di->getShared(ErrorHandler::class);
         $errorHandler->register();
         $this->attachEvents();
@@ -114,7 +116,9 @@ class ServiceApplication
         } catch (LogicException $e) {
             $response->setHeader('returnType', get_class($e));
             $content = ['error' => $e->getMessage(), 'returnType' => get_class($e)];
-            $content['context'] = $e->getContext();
+            if (method_exists($e, 'getContext')) {
+                $content['context'] = $e->getContext();
+            }
             $response->setJsonContent($content);
         } catch (RequestException $e) {
             $response = $e->getResponse();
@@ -126,8 +130,9 @@ class ServiceApplication
                 'message' => $e->getMessage(),
                 'hint'    => $e->getHint(),
             ]);
-        } catch (ErrorException $e) {
-            //...
+        }
+        if (isset($e)) {
+            $this->di->getShared('eventsManager')->fire("application:beforeSendResponse", $this->application, $response);
         }
 
         return $response;
@@ -167,7 +172,7 @@ class ServiceApplication
             }
         });
         $eventsManager->attach('router:afterCheckRoutes', function (Event $event, Router $router): void {
-            /* @var \Eelly\Http\ServiceRequest $request */
+            /* @var \Shadon\Http\ServiceRequest $request */
             $request = $this->di->getShared('request');
             if ($request->isPost()) {
                 $router->setParams($request->getRouteParams());

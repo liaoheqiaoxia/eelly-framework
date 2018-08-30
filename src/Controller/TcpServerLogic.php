@@ -11,24 +11,23 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Eelly\Controller;
+namespace Shadon\Controller;
 
-use Eelly\Mvc\Controller;
+use Shadon\Mvc\Controller;
 
 /**
  * Class TcpServerLogic.
  *
- * @property \Eelly\Network\HttpServer $server
+ * @property \Shadon\Network\HttpServer $server
  */
 class TcpServerLogic extends Controller
 {
-    public function register():array
+    public function register(): array
     {
         $module = $this->request->getPost('module');
         $ip = $this->request->getPost('ip', null, $this->request->getClientAddress());
         $port = (int) $this->request->getPost('port');
-        $pid = (int) $this->request->getPost('pid');
-        $this->server->registerModule($module, $ip, $port, $pid);
+        $this->server->registerModule($module, $ip, $port);
 
         return $this->server->getModuleMap();
     }

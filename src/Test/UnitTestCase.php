@@ -11,15 +11,12 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Eelly\Test;
+namespace Shadon\Test;
 
-use Composer\Autoload\ClassLoader;
-use Eelly\Di\InjectionAwareInterface;
-use Eelly\Di\ServiceDi;
-use Phalcon\Config;
 use Phalcon\Di;
 use Phalcon\DiInterface;
 use PHPUnit\Framework\TestCase;
+use Shadon\Di\InjectionAwareInterface;
 
 /**
  * Class UnitTestCase.
@@ -31,32 +28,10 @@ class UnitTestCase extends TestCase implements InjectionAwareInterface
      */
     protected $di;
 
-    /**
-     * This method is called before a test is executed.
-     */
-    protected function setUp(): void
+    public static function setUpBeforeClass(): void
     {
-        Di::reset();
-        $di = new ServiceDi();
-        $di->setShared('loader', new ClassLoader());
-        $dotenv = new \Dotenv\Dotenv(getcwd(), '.env');
-        $dotenv->load();
-        $appEnv = getenv('APPLICATION_ENV');
-        $appKey = getenv('APPLICATION_KEY');
-        /**
-         * @var ClassLoader $loader
-         */
-        $loader = $di->getShared('loader');
-
-        $arrayConfig = require 'var/config/config.'.$appEnv.'.php';
-        define('APP', [
-            'env'      => $appEnv,
-            'key'      => $appKey,
-            'rootPath' => $arrayConfig['rootPath'],
-            'timezone' => $arrayConfig['timezone'],
-        ]);
-        $di->setShared('config', new Config($arrayConfig));
-        \Eelly\Application\ApplicationConst::$env = $appEnv;
+        $di = Di::getDefault();
+        $loader = $di->get('loader');
         list($moduleName) = explode('\\', static::class);
         $loader->addPsr4($moduleName.'\\', 'src/'.$moduleName);
         $loader->register();
@@ -64,7 +39,6 @@ class UnitTestCase extends TestCase implements InjectionAwareInterface
         $module = $di->getShared('\\'.$moduleName.'\\Module');
         $module->registerAutoloaders($di);
         $module->registerServices($di);
-        $this->di = $di;
     }
 
     /**

@@ -11,18 +11,22 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Eelly\Network;
+namespace Shadon\Network;
 
-use Eelly\Events\Listener\TcpServerListner;
-use Phalcon\DiInterface;
+use Shadon\Events\Listener\TcpServerListner;
+use Shadon\Network\Traits\ServerTrait;
 use Swoole\Lock;
 use Swoole\Server;
-use Symfony\Component\Console\Output\OutputInterface;
 
+/**
+ * Class TcpServer.
+ */
 class TcpServer extends Server
 {
+    use ServerTrait;
+
     /**
-     * 事件列表.
+     * event list.
      *
      * @var array
      */
@@ -45,24 +49,20 @@ class TcpServer extends Server
         'ManagerStop',
     ];
 
+    /**
+     * max module map count.
+     */
+    private const MAX_MODULE_MAP_COUNT = 50;
+
+    /**
+     * @var TcpServerListner
+     */
     private $listner;
 
     /**
      * @var string
      */
-    private $module;
-
-    /**
-     * @var OutputInterface
-     */
-    private $output;
-
-    /**
-     * @var DiInterface
-     */
-    private $di;
-
-    private $lock;
+    private $moduleName;
 
     /**
      * TcpServer constructor.
@@ -77,87 +77,78 @@ class TcpServer extends Server
         parent::__construct($host, $port, $mode, $sockType);
         $this->listner = new TcpServerListner();
         $this->lock = new Lock(SWOOLE_MUTEX);
+        $this->moduleMap = $this->createModuleMap();
         foreach (self::EVENTS as $event) {
             $this->on($event, [$this->listner, 'on'.$event]);
         }
     }
 
+    /**
+     * Set process name.
+     *
+     * @param string $name
+     */
     public function setProcessName(string $name): void
     {
-        $processName = $this->module.'_'.$name;
+        $processName = $this->moduleName.'_'.$name;
         swoole_set_process_name($processName);
         $this->writeln($processName);
     }
 
     /**
-     * @param string $string
-     * @param int    $option
+     * Initialize module.
      */
-    public function writeln(string $string, $option = 0)
+    public function initializeModule(): void
     {
-        $info = sprintf('[%s %d] %s', formatTime(), getmypid(), $string);
-        $this->lock->lock();
-        $this->output->writeln($info, $option);
-        $this->lock->unlock();
-    }
-
-    /**
-     * register module.
-     */
-    public function registerModule(): void
-    {
-        $module = ucfirst($this->module).'\\Module';
-        /* @var \Eelly\Mvc\AbstractModule $moduleInstance */
+        $module = ucfirst($this->moduleName).'\\Module';
+        /* @var \Shadon\Mvc\AbstractModule $moduleInstance */
         $moduleInstance = $this->di->getShared($module);
         $moduleInstance->registerAutoloaders($this->di);
         $moduleInstance->registerServices($this->di);
     }
 
     /**
+     * Register router.
+     */
+    public function registerRouter(): void
+    {
+        /* @var \Phalcon\Mvc\Router $router */
+        $router = $this->di->getShared('router');
+        $moduleName = $this->moduleName;
+        $namespace = ucfirst($moduleName).'\\Logic';
+        $router->add('/'.$moduleName.'/:controller/:action', [
+            'namespace'  => $namespace,
+            'module'     => $moduleName,
+            'controller' => 1,
+            'action'     => 2,
+        ]);
+    }
+
+    /**
+     * @param int    $fd
+     * @param string $data
+     * @param int    $fromId
+     *
+     * @return bool
+     */
+    public function send($fd, $data, $fromId = 0): bool
+    {
+        return parent::send($fd, $data."\r\n", $fromId);
+    }
+
+    /**
      * @return string
      */
-    public function getModule(): string
+    public function getModuleName(): string
     {
-        return $this->module;
+        return $this->moduleName;
     }
 
     /**
-     * @param string $module
+     * @param string $moduleName
      */
-    public function setModule(string $module): void
+    public function setModuleName(string $moduleName): void
     {
-        $this->module = $module;
-    }
-
-    /**
-     * @return OutputInterface
-     */
-    public function getOutput(): OutputInterface
-    {
-        return $this->output;
-    }
-
-    /**
-     * @param OutputInterface $output
-     */
-    public function setOutput(OutputInterface $output): void
-    {
-        $this->output = $output;
-    }
-
-    /**
-     * @return DiInterface
-     */
-    public function getDi(): DiInterface
-    {
-        return $this->di;
-    }
-
-    /**
-     * @param DiInterface $di
-     */
-    public function setDi(DiInterface $di): void
-    {
-        $this->di = $di;
+        $this->moduleName = $moduleName;
     }
 }

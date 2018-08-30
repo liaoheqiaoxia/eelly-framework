@@ -11,9 +11,12 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Eelly\Events\Listener;
+namespace Shadon\Events\Listener;
 
-use Eelly\Network\TcpServer;
+use Exception;
+use Phalcon\Dispatcher;
+use Phalcon\Events\Event;
+use Shadon\Network\TcpServer;
 
 /**
  * Class TcpServerListner.
@@ -23,7 +26,7 @@ class TcpServerListner
     public function onStart(TcpServer $server): void
     {
         $server->setProcessName('server');
-        $info = sprintf('%s tcp server was started and listening on <info>%d</info>', $server->getModule(), $server->port);
+        $info = sprintf('%s tcp server was started and listening on <info>%d</info>', $server->getModuleName(), $server->port);
         $server->writeln($info);
     }
 
@@ -43,7 +46,33 @@ class TcpServerListner
         if (function_exists('opcache_reset')) {
             opcache_reset();
         }
-        $server->registerModule();
+        $server->initializeModule();
+        $server->registerRouter();
+        $server->getDi()->setShared('server', $server);
+        /* @var \Phalcon\Events\Manager $eventsManager */
+        $eventsManager = $server->getDi()->getShared('eventsManager');
+        $eventsManager->attach('dispatch:afterDispatchLoop', function (Event $event, Dispatcher $dispatcher) use ($server): void {
+            $returnedValue = $dispatcher->getReturnedValue();
+            /* @var \Phalcon\Http\Response $response */
+            $response = $server->getDi()->getShared('response');
+            if (is_object($returnedValue)) {
+                $response->setHeader('returnType', get_class($returnedValue));
+                if ($returnedValue instanceof \JsonSerializable) {
+                    $response->setJsonContent(['data' => $returnedValue, 'returnType' => get_class($returnedValue)]);
+                }
+            } elseif (is_array($returnedValue)) {
+                $response->setHeader('returnType', 'array');
+                $response->setJsonContent(['data' => $returnedValue, 'returnType' => 'array']);
+            } elseif (is_scalar($returnedValue)) {
+                $response->setHeader('returnType', gettype($returnedValue));
+                $response->setJsonContent(
+                    ['data' => $returnedValue, 'returnType' => gettype($returnedValue)]
+                );
+                if (is_string($returnedValue)) {
+                    $dispatcher->setReturnedValue($response->getContent());
+                }
+            }
+        });
     }
 
     public function onWorkerStop(): void
@@ -56,16 +85,34 @@ class TcpServerListner
 
     public function onReceive(TcpServer $server, int $fd, int $reactorId, string $data): void
     {
-        $data = json_decode($data, true);
-        $handlerClass = $data['class'];
-        $actionMethod = $data['method'];
+        $data = \GuzzleHttp\json_decode($data, true);
+        $uri = $data['uri'];
         $params = $data['params'];
-        $handler = $server->getDi()->getShared($handlerClass);
+        $di = $server->getDi();
+        /* @var \Shadon\Router\ServiceRouter $router */
+        $router = $di->getShared('router');
+        $router->handle($uri);
+        $router->setParams($params);
+        /* @var \Phalcon\Mvc\Dispatcher $dispatcher */
+        $dispatcher = $di->getShared('dispatcher');
+        $dispatcher->setModuleName($router->getModuleName());
+        $dispatcher->setNamespaceName($router->getNamespaceName());
+        $dispatcher->setControllerName($router->getControllerName());
+        $dispatcher->setActionName($router->getActionName());
+        $dispatcher->setParams($params);
+        /* @var \Phalcon\Http\Response $response */
+        $response = $di->getShared('response');
 
-        $data = call_user_func_array([$handler, $actionMethod], $params);
-        $server->send($fd, json_encode([
-            'data' => $data,
-        ]));
+        try {
+            $controller = $dispatcher->dispatch();
+        } catch (Exception $e) {
+            $response->setStatusCode(500);
+            $response->setJsonContent(['error' => $e->getMessage(), 'returnType' => get_class($e)]);
+        }
+
+        $server->send($fd, '{"content":'.$response->getContent().',"headers":'.json_encode($response->getHeaders()->toArray()).'}');
+        $response->resetHeaders();
+        $response->setContent('');
     }
 
     public function onPacket(): void

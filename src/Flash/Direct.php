@@ -11,7 +11,7 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Eelly\Flash;
+namespace Shadon\Flash;
 
 use Phalcon\Flash\Direct as FlashDirect;
 
@@ -42,6 +42,7 @@ class Direct extends FlashDirect
     public function getOutput(bool $remove = true): string
     {
         $str = '';
+        !is_array($this->_messages) && $this->_messages = [];
         foreach ($this->_messages as $message) {
             $str .= $message;
         }

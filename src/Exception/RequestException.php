@@ -11,11 +11,11 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Eelly\Exception;
+namespace Shadon\Exception;
 
-use Eelly\Application\ApplicationConst;
 use Phalcon\Http\RequestInterface;
 use Phalcon\Http\ResponseInterface;
+use Shadon\Application\ApplicationConst;
 
 class RequestException extends \RuntimeException
 {
@@ -120,7 +120,7 @@ class RequestException extends \RuntimeException
         $this->handlerContext = $handlerContext;
         $response->setStatusCode($code);
         $content = ['error' => $message];
-        switch (ApplicationConst::$env) {
+        switch (APP['env']) {
             case ApplicationConst::ENV_TEST:
             case ApplicationConst::ENV_DEVELOPMENT:
                 $content['context'] = $handlerContext;

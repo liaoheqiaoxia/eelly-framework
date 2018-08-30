@@ -11,16 +11,16 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Eelly\Error\Handler;
+namespace Shadon\Logger\Handler;
 
-use Eelly\Application\ApplicationConst;
 use Monolog\Handler\AbstractProcessingHandler;
 use Phalcon\Di\InjectionAwareInterface;
+use Shadon\Application\ApplicationConst;
 
 /**
  * @author hehui<hehui@eelly.net>
  */
-class ServiceHandler extends AbstractProcessingHandler implements InjectionAwareInterface
+class WebHandler extends AbstractProcessingHandler implements InjectionAwareInterface
 {
     /**
      * Dependency Injector.
@@ -51,30 +51,20 @@ class ServiceHandler extends AbstractProcessingHandler implements InjectionAware
 
     protected function write(array $record): void
     {
-        $content['error'] = $record['message'];
-        switch (ApplicationConst::$env) {
+        $content['error'] = 'server error';
+        $content['returnType'] = $record['context']['class'];
+        switch (APP['env']) {
             case ApplicationConst::ENV_TEST:
             case ApplicationConst::ENV_DEVELOPMENT:
                 $content['context'] = $record['context'];
+                $content['error'] = $record['message'];
                 break;
         }
-        /* @var \Eelly\Http\Response $response */
+        /* @var \Phalcon\Http\Response $response */
         $response = $this->getDI()->getResponse();
         $response = $response->setStatusCode(500, $record['level_name']);
-        $response = $response->setJsonContent($content);
-        if ('swoole' == APP['env']) {
-            /* @var \Eelly\Http\Server $server */
-            $server = $this->getDI()->getShared('swooleServer');
-            $swooleHttpResponse = $server->getSwooleHttpResponse();
-            $content = $response->getContent();
-            $headers = $response->getHeaders();
-            $swooleHttpResponse->status($response->getStatusCode());
-            foreach ($headers->toArray() as $key => $value) {
-                $swooleHttpResponse->header($key, (string) $value);
-            }
-            $swooleHttpResponse->end($content);
-        } else {
-            $response->send();
-        }
+        $response = $response->setContent($content['error']);
+        // TODO view
+        $response->send();
     }
 }

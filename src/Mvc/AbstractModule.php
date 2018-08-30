@@ -11,15 +11,12 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Eelly\Mvc;
+namespace Shadon\Mvc;
 
-use Eelly\Application\ApplicationConst;
-use Eelly\Di\Injectable;
-use Eelly\Events\Listener\ValidateAccessTokenListener;
-use Eelly\SDK\EellyClient;
 use Phalcon\Config;
 use Phalcon\DiInterface as Di;
 use Phalcon\Mvc\ModuleDefinitionInterface;
+use Shadon\Di\Injectable;
 
 /**
  * @author hehui<hehui@eelly.net>
@@ -85,27 +82,10 @@ abstract class AbstractModule extends Injectable implements ModuleDefinitionInte
 
             return $this->get($config['adapter'], [$config['options'][$config['adapter']]]);
         });
-        // eelly client service
-        $di->setShared('eellyClient', function () {
-            $options = $this->getModuleConfig()->oauth2Client->eelly->toArray();
-            if (ApplicationConst::ENV_PRODUCTION === APP['env']) {
-                $eellyClient = EellyClient::init($options['options']);
-            } else {
-                $collaborators = [
-                    'httpClient' => new \GuzzleHttp\Client(['verify' => false]),
-                ];
-                $eellyClient = EellyClient::init($options['options'], $collaborators, $options['providerUri']);
-            }
-            $eellyClient->getProvider()->setAccessTokenCache($this->getCache());
-
-            return $eellyClient;
-        });
         // register user services
         $this->registerUserServices($di);
         $eventsManager = $this->eventsManager;
         $eventsManager->enablePriorities(true);
-        // token 校验
-        $eventsManager->attach('dispatch', $di->getShared(ValidateAccessTokenListener::class), 10000);
         // attach events
         $this->attachUserEvents($di);
     }
@@ -125,9 +105,9 @@ abstract class AbstractModule extends Injectable implements ModuleDefinitionInte
     /**
      * 注入模块支持的命令.
      *
-     * @param \Eelly\Console\Application $app
+     * @param \Shadon\Console\Application $app
      */
-    public function registerCommands(\Eelly\Console\Application $app): void
+    public function registerCommands(\Shadon\Console\Application $app): void
     {
         /* @var \Composer\Autoload\ClassLoader $loader */
         $loader = $this->loader;
@@ -138,7 +118,7 @@ abstract class AbstractModule extends Injectable implements ModuleDefinitionInte
     /**
      * Registers user commands.
      *
-     * @param \Eelly\Console\Application $app
+     * @param \Shadon\Console\Application $app
      */
-    abstract public function registerUserCommands(\Eelly\Console\Application $app): void;
+    abstract public function registerUserCommands(\Shadon\Console\Application $app): void;
 }

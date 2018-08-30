@@ -11,16 +11,17 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Eelly\Error;
+namespace Shadon\Error;
 
-use Eelly\Application\ApplicationConst;
-use Eelly\Error\Handler\ServiceHandler;
 use ErrorException;
 use Monolog\Handler\AbstractHandler;
-use Monolog\Handler\StreamHandler;
 use Monolog\Logger;
+use Monolog\Processor\WebProcessor;
 use Phalcon\Di\Injectable;
 use Psr\Log\LogLevel;
+use Shadon\Application\ApplicationConst;
+use Shadon\Logger\Handler\DingDingHandler;
+use Throwable;
 
 /**
  * @author hehui<hehui@eelly.net>
@@ -61,15 +62,14 @@ class Handler extends Injectable
     {
         // dev本地，local 待上线，prod 线上，test 测试
         ini_set('display_errors', '0');
-        switch (ApplicationConst::$env) {
-            case ApplicationConst::ENV_PRODUCTION:
-            case ApplicationConst::ENV_STAGING:
-            default:
-                error_reporting(E_ALL & ~E_DEPRECATED & ~E_STRICT);
-                break;
+        switch (APP['env']) {
             case ApplicationConst::ENV_TEST:
             case ApplicationConst::ENV_DEVELOPMENT:
                 error_reporting(E_ALL);
+                break;
+            case ApplicationConst::ENV_PRODUCTION:
+            case ApplicationConst::ENV_STAGING:
+                error_reporting(E_ALL & ~E_DEPRECATED & ~E_STRICT);
                 break;
         }
         $handler = new static();
@@ -87,14 +87,11 @@ class Handler extends Injectable
     {
         if (null === $this->logger) {
             $di = $this->getDI();
-            $this->logger = $di->getLogger();
-            if ('php' == APP['env']) {
-                $streamHandler = new StreamHandler('php://stdout');
-                $this->logger->pushHandler($streamHandler);
-            } else {
-                $serviceHandler = $di->getShared(ServiceHandler::class);
-                $this->logger->pushHandler($serviceHandler);
-            }
+            $this->logger = $di->get('logger');
+            $config = $di->getShared('config');
+            $this->logger->pushHandler(new DingDingHandler($config['dingding']));
+            $this->logger->pushHandler($di->getShared('errorViewHandler'));
+            $this->logger->pushProcessor(new WebProcessor(null, ['url']));
         }
 
         return $this->logger;
@@ -107,9 +104,7 @@ class Handler extends Injectable
 
     public function registerExceptionHandler(): void
     {
-        if ('swoole' != APP['env']) {
-            set_exception_handler([$this, 'handleException']);
-        }
+        set_exception_handler([$this, 'handleException']);
     }
 
     public function registerFatalHandler($reservedMemorySize = 20): void
@@ -123,27 +118,22 @@ class Handler extends Injectable
         if (!($code & error_reporting())) {
             return;
         }
-        if (!in_array($code, self::FATAL_ERRORS, true)) {
-            $errorLevelMap = $this->defaultErrorLevelMap();
-            $level = $errorLevelMap[$code] ?? LogLevel::CRITICAL;
-            $this->getLogger()->log($level, self::codeToString($code).': '.$message, [
-                'code'    => $code,
-                'message' => $message,
-                'file'    => $file,
-                'line'    => $line,
-            ]);
-        }
 
         throw new ErrorException($message, 0, $code, $file, $line);
     }
 
-    public function handleException(\Throwable $e): void
+    public function handleException(Throwable $e): void
     {
         $errorLevelMap = $this->defaultErrorLevelMap();
         $level = $errorLevelMap[$e->getCode()] ?? LogLevel::ERROR;
-        $this->getLogger()->log($level, 'Uncaught Exception: '.$e->getMessage(), [
+        $message = $e->getMessage();
+        $encode = mb_detect_encoding($message, 'UTF-8,GBK');
+        if ('UTF-8' != $encode) {
+            $message = mb_convert_encoding($message, 'UTF-8', $encode);
+        }
+        $this->getLogger()->log($level, 'Uncaught Exception: '.get_class($e), [
             'code'          => $e->getCode(),
-            'message'       => $e->getMessage(),
+            'message'       => $message,
             'class'         => get_class($e),
             'file'          => $e->getFile(),
             'line'          => $e->getLine(),
@@ -161,7 +151,13 @@ class Handler extends Injectable
             $logger->log(
                 LogLevel::ALERT,
                 'Fatal Error ('.self::codeToString($lastError['type']).'): '.$lastError['message'],
-                ['code' => $lastError['type'], 'message' => $lastError['message'], 'file' => $lastError['file'], 'line' => $lastError['line']]
+                [
+                    'code'    => $lastError['type'],
+                    'message' => $lastError['message'],
+                    'class'   => 'ErrorException',
+                    'file'    => $lastError['file'],
+                    'line'    => $lastError['line'],
+                ]
             );
 
             if ($logger instanceof Logger) {

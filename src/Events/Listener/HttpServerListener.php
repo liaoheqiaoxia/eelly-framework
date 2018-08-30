@@ -11,13 +11,15 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Eelly\Events\Listener;
+namespace Shadon\Events\Listener;
 
-use Eelly\Exception\RequestException;
-use Eelly\Http\SwoolePhalconRequest;
-use Eelly\Network\HttpServer;
+use Exception;
 use Phalcon\Events\Event;
 use Phalcon\Mvc\Router;
+use Shadon\Error\Handler as ErrorHandler;
+use Shadon\Exception\RequestException;
+use Shadon\Http\SwoolePhalconRequest;
+use Shadon\Network\HttpServer;
 use Swoole\Server;
 use swoole_http_request as SwooleHttpRequest;
 use swoole_http_response as SwooleHttpResponse;
@@ -57,12 +59,14 @@ class HttpServerListener
         /* @var \Phalcon\Events\Manager $eventsManager */
         $eventsManager = $server->getDi()->getShared('eventsManager');
         $eventsManager->attach('router:afterCheckRoutes', function (Event $event, Router $router) use ($server): void {
-            /* @var \Eelly\Http\ServiceRequest $request */
+            /* @var \Shadon\Http\ServiceRequest $request */
             $request = $server->getDi()->getShared('request');
             if ($request->isPost()) {
                 $router->setParams($request->getRouteParams());
             }
         });
+        $errorHandler = $server->getDi()->getShared(ErrorHandler::class);
+        $errorHandler->register();
     }
 
     public function onWorkerStop(HttpServer $server, int $workerId): void
@@ -83,7 +87,7 @@ class HttpServerListener
         $phalconHttpRequest = $di->get('request');
         $phalconHttpRequest->initialWithSwooleHttpRequest($swooleHttpRequest);
 
-        /* @var \Eelly\Router\ServiceRouter $router */
+        /* @var \Shadon\Router\ServiceRouter $router */
         $router = $di->getShared('router');
         $router->handle();
         $moduleName = $router->getModuleName();
@@ -98,9 +102,9 @@ class HttpServerListener
             $dispatcher->setNamespaceName($router->getNamespaceName());
             $dispatcher->setControllerName($router->getControllerName());
             $dispatcher->setActionName($router->getActionName());
+            $dispatcher->setParams($router->getParams());
 
             try {
-                $dispatcher->setParams($router->getParams());
                 $controller = $dispatcher->dispatch();
                 $possibleResponse = $dispatcher->getReturnedValue();
                 if ($possibleResponse instanceof \Phalcon\Mvc\View) {
@@ -127,25 +131,24 @@ class HttpServerListener
             }
         } else {
             // service api
+            $response->setContentType('application/json');
+
             try {
-                /* @var \swoole_client $moduleClient */
                 $moduleClient = $this->server->getModuleClient($moduleName);
-                $moduleClient->send(json_encode([
+                $moduleClient->sendJson([
                     'uri'    => $router->getRewriteUri(),
                     'params' => $router->getParams(),
-                ]));
-                $response->setContentType('application/json');
-                $content = $moduleClient->recv();
-                if (false === $content) {
-                    $response->setStatusCode(500);
-                    $content = json_encode(['error' => 'Server error('.$moduleClient->errCode.')']);
+                ]);
+                $data = $moduleClient->recvJson();
+                $response->setJsonContent($data['content']);
+                foreach ($data['headers'] as $key => $value) {
+                    $response->setHeader($key, $value);
                 }
-                $response->setContent($content);
             } catch (RequestException $e) {
                 $response = $e->getResponse();
-            } catch (\Exception $e) {
+            } catch (Exception $e) {
                 $response->setStatusCode(500);
-                $response->setJsonContent(['error' => $e->getMessage()]);
+                $response->setJsonContent(['error' => $e->getMessage(), 'returnType' => get_class($e)]);
             }
         }
         // swollow output
@@ -154,6 +157,9 @@ class HttpServerListener
             $swooleHttpResponse->header($key, (string) $value);
         }
         $swooleHttpResponse->end($response->getContent());
+
+        $response->resetHeaders();
+        $response->setContent('');
     }
 
     public function onPacket(): void

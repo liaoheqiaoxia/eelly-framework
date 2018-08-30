@@ -11,11 +11,11 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace Eelly\Events\Listener;
+namespace Shadon\Events\Listener;
 
-use Eelly\SDK\EellyClient;
 use Phalcon\Events\Event;
 use Phalcon\Mvc\Dispatcher;
+use PhpAmqpLib\Exception\AMQPTimeoutException;
 
 /**
  * async annotation listener.
@@ -51,13 +51,26 @@ class AsyncAnnotationListener extends AbstractListener
                 'class'   => $dispatcher->getControllerClass(),
                 'method'  => $dispatcher->getActiveMethod(),
                 'params'  => $dispatcher->getParams(),
-                'traceId' => EellyClient::$traceId,
                 'time'    => microtime(true),
             ];
-            $producer = $this->queueFactory->createProducer();
+
+            try {
+                /* @var \Shadon\Queue\Adapter\Producer $producer */
+                $producer = $this->queueFactory->createProducer();
+            } catch (AMQPTimeoutException | \ErrorException $e) {
+                return true;
+            }
             $producer->setExchangeOptions(['name' => $dispatcher->getModuleName(), 'type' => 'topic']);
             $routingKey = $annotation->getNamedParameter('route') ?? 'default_routing_key';
             $producer->publish(json_encode($msgBody), $routingKey);
+
+            $connection = $producer->getConnection();
+            if ($connection->isConnected()) {
+                try {
+                    $connection->close();
+                } catch (\PhpAmqpLib\Exception\AMQPRuntimeException $e) {
+                }
+            }
             if ($event->isCancelable()) {
                 $event->stop();
             }
